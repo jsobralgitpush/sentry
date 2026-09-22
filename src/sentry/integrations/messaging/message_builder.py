@@ -179,10 +179,10 @@ def get_title_link_workflow_engine_ui(
     other_params = {}
     # add in rule id if we have it
     if workflow_id:
-        if (
-            environment_id is not None
-            and (environment_name := fetch_environment_name(environment_id)) is not None
-        ):
+        environment_name = event.get_tag("environment") if event is not None else None
+        if environment_name is None and environment_id is not None:
+            environment_name = fetch_environment_name(environment_id)
+        if environment_name is not None:
             other_params["environment"] = environment_name
         # hard code for issue alerts
         other_params["workflow_id"] = str(workflow_id)

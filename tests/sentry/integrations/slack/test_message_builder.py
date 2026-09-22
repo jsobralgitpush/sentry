@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 from unittest.mock import MagicMock, Mock, patch
+from urllib.parse import parse_qs, urlparse
 
 from sentry.grouping.grouptype import ErrorGroupType
 from sentry.integrations.messaging.message_builder import (
     build_attachment_text,
     build_attachment_title,
+    get_title_link_workflow_engine_ui,
 )
 from sentry.integrations.slack.message_builder.issues import (
     SlackIssuesMessageBuilder,
@@ -20,6 +22,7 @@ from sentry.integrations.slack.message_builder.issues import (
 from sentry.integrations.slack.message_builder.routing import encode_action_id
 from sentry.integrations.slack.message_builder.types import SlackAction
 from sentry.integrations.time_utils import time_since
+from sentry.integrations.types import ExternalProviders
 from sentry.issues.grouptype import (
     FeedbackGroup,
     PerformanceP95EndpointRegressionGroupType,
@@ -269,6 +272,48 @@ class BuildAttachmentTitleTest(TestCase):
             }
         )
         assert build_attachment_title(group) == "SIGSEGV: Signal 11, Code 1"
+
+
+class GetTitleLinkWorkflowEngineUITest(TestCase):
+    def test_prefers_event_environment(self) -> None:
+        event_environment = self.create_environment(project=self.project, name="production")
+        workflow_environment = self.create_environment(project=self.project, name="development")
+        event = self.store_event(
+            data={"message": "boom", "environment": event_environment.name},
+            project_id=self.project.id,
+        )
+        group = event.group
+        assert group
+
+        url = get_title_link_workflow_engine_ui(
+            group,
+            event,
+            link_to_event=False,
+            issue_details=False,
+            notification=None,
+            provider=ExternalProviders.SLACK,
+            workflow_id=1,
+            environment_id=workflow_environment.id,
+        )
+
+        assert parse_qs(urlparse(url).query)["environment"] == ["production"]
+
+    def test_falls_back_to_workflow_environment_without_event(self) -> None:
+        workflow_environment = self.create_environment(project=self.project, name="production")
+        group = self.create_group(project=self.project)
+
+        url = get_title_link_workflow_engine_ui(
+            group,
+            event=None,
+            link_to_event=False,
+            issue_details=False,
+            notification=None,
+            provider=ExternalProviders.SLACK,
+            workflow_id=1,
+            environment_id=workflow_environment.id,
+        )
+
+        assert parse_qs(urlparse(url).query)["environment"] == ["production"]
 
 
 class BuildGroupAttachmentTest(TestCase, PerformanceIssueTestCase, OccurrenceTestMixin):
